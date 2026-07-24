@@ -1,5 +1,5 @@
 """
-THE CHOICE HUB – FULL E‑COMMERCE (Google OAuth + Production Ready)
+THE CHOICE HUB – FULL E‑COMMERCE (Google OAuth + Email Password Reset)
 All features: Customer, Admin, Seller, Cart, Checkout, Coupons, Offers,
 Reviews, Wishlist, Pincode Delivery, Order Tracking, Excel import, etc.
 """
@@ -16,13 +16,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from authlib.integrations.flask_client import OAuth
-import requests
-
-# ---------- NEW: Password Reset imports ----------
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer
+import requests
 
-load_dotenv()  # Load .env for local development
+load_dotenv()  # Local development ke liye
 
 # ---------- APP SETUP ----------
 app = Flask(__name__)
@@ -36,7 +34,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ---------- NEW: MAIL SETUP ----------
+# ---------- MAIL SETUP ----------
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'true').lower() in ['true', '1']
@@ -74,11 +72,9 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), default='customer')
     referral_code = db.Column(db.String(20), unique=True, nullable=True)
     wishlist = db.Column(db.Text, nullable=True)
+    reset_token = db.Column(db.String(100), unique=True, nullable=True)        # ← नया
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)                 # ← नया
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    # ---------- NEW: Password Reset fields ----------
-    reset_token = db.Column(db.String(100), unique=True, nullable=True)
-    reset_token_expiry = db.Column(db.DateTime, nullable=True)
-    # Relations
     orders = db.relationship('Order', backref='customer', lazy=True)
     reviews = db.relationship('Review', backref='user', lazy=True)
 
@@ -253,7 +249,7 @@ class Banner(db.Model):
     position = db.Column(db.Integer, default=0)
     is_active = db.Column(db.Boolean, default=True)
 
-# ---------- DATABASE INIT (WITH MIGRATION FOR RESET TOKENS) ----------
+# ---------- DATABASE INIT (NO DEMO DATA) ----------
 with app.app_context():
     db.create_all()
     # Ensure images column exists (legacy)
@@ -263,7 +259,7 @@ with app.app_context():
     except:
         pass
 
-    # ---------- NEW: Add reset_token and reset_token_expiry columns ----------
+    # Add reset_token and reset_token_expiry columns if not exist
     try:
         db.session.execute("ALTER TABLE user ADD COLUMN reset_token VARCHAR(100)")
         db.session.commit()
@@ -329,7 +325,7 @@ def estimate_delivery_date(pincode):
     delivery_date = datetime.utcnow() + timedelta(days=days)
     return delivery_date, days
 
-# ---------- NEW: Password Reset Helper Functions ----------
+# ---------- TOKEN GENERATION ----------
 def generate_reset_token(email):
     serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
     return serializer.dumps(email, salt='password-reset-salt')
@@ -441,7 +437,7 @@ def logout():
     session.pop('referral', None)
     return redirect('/')
 
-# ---------- NEW: Password Reset Routes ----------
+# ---------- PASSWORD RESET (FORGOT PASSWORD) ----------
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
@@ -465,8 +461,14 @@ Regards,
 ChoiceHub Team
 """
             msg = Message(subject, recipients=[email], body=body)
-            mail.send(msg)
-            flash('📧 Password reset link sent to your email. Please check your inbox (and spam folder).')
+            try:
+                print("📧 Sending email...")
+                mail.send(msg)
+                print("✅ Email sent successfully")
+                flash('📧 Password reset link sent to your email. Please check your inbox (and spam folder).')
+            except Exception as e:
+                print("❌ MAIL ERROR:", str(e))
+                flash(f'❌ Email sending failed: {str(e)}. Please try again later.')
         else:
             flash('❌ No account found with that email.')
         return redirect('/forgot-password')
@@ -497,9 +499,8 @@ def reset_password(token):
     return render_template('reset_password.html', token=token)
 
 # ---------- ROUTES (YOUR EXISTING CODE) ----------
-# ... (ALL YOUR EXISTING ROUTES - index, search, product, cart, checkout, profile, admin, etc.)
-# Copy and paste your existing routes here exactly as they were.
-# Note: The routes below are exactly as you provided, no changes.
+# (All your existing routes go here – index, product, search, cart, checkout, profile, admin, etc.)
+# I am pasting them below for completeness, but you can keep your own.
 
 @app.route('/')
 def index():
@@ -1030,7 +1031,6 @@ def admin_edit_product(id):
         product.care_instructions = request.form.get('care_instructions')
         product.warranty = request.form.get('warranty')
         product.return_policy = request.form.get('return_policy')
-        # delivery_time removed – no longer set
         product.video_url = request.form.get('video_url')
         product.is_featured = request.form.get('is_featured') == 'on'
         product.is_bestseller = request.form.get('is_bestseller') == 'on'
@@ -1155,7 +1155,6 @@ def admin_import_excel():
         wb = load_workbook(file)
         ws = wb.active
         headers = [cell.value for cell in ws[1] if cell.value]
-        # Map all columns (27 columns)
         col_map = {}
         for idx, h in enumerate(headers):
             h_lower = str(h).strip().lower()
@@ -1277,7 +1276,7 @@ def download_template():
     ]
     ws.append(sample)
     from openpyxl.comments import Comment
-    cell = ws['V2']  # column V is image_urls (index 20)
+    cell = ws['V2']
     cell.comment = Comment('Enter comma-separated image URLs. The system will download and save them automatically.', 'Admin')
     output = BytesIO()
     wb.save(output)
@@ -1390,4 +1389,4 @@ def internal_error(e):
 
 # ---------- RUN ----------
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)  # debug=False for production
+    app.run(debug=False, host='0.0.0.0', port=5000)   # production mode
