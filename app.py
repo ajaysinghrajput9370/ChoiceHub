@@ -18,6 +18,10 @@ from dotenv import load_dotenv
 from authlib.integrations.flask_client import OAuth
 import requests
 
+# ---------- NEW: Password Reset imports ----------
+from flask_mail import Mail, Message
+from itsdangerous import URLSafeTimedSerializer
+
 load_dotenv()  # Load .env for local development
 
 # ---------- APP SETUP ----------
@@ -31,6 +35,16 @@ UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ---------- NEW: MAIL SETUP ----------
+app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'true').lower() in ['true', '1']
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER')
+
+mail = Mail(app)
 
 # ---------- GOOGLE OAUTH ----------
 oauth = OAuth(app)
@@ -61,6 +75,10 @@ class User(UserMixin, db.Model):
     referral_code = db.Column(db.String(20), unique=True, nullable=True)
     wishlist = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # ---------- NEW: Password Reset fields ----------
+    reset_token = db.Column(db.String(100), unique=True, nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
+    # Relations
     orders = db.relationship('Order', backref='customer', lazy=True)
     reviews = db.relationship('Review', backref='user', lazy=True)
 
@@ -235,12 +253,24 @@ class Banner(db.Model):
     position = db.Column(db.Integer, default=0)
     is_active = db.Column(db.Boolean, default=True)
 
-# ---------- DATABASE INIT (NO DEMO DATA) ----------
+# ---------- DATABASE INIT (WITH MIGRATION FOR RESET TOKENS) ----------
 with app.app_context():
     db.create_all()
     # Ensure images column exists (legacy)
     try:
         db.session.execute("ALTER TABLE product ADD COLUMN images TEXT")
+        db.session.commit()
+    except:
+        pass
+
+    # ---------- NEW: Add reset_token and reset_token_expiry columns ----------
+    try:
+        db.session.execute("ALTER TABLE user ADD COLUMN reset_token VARCHAR(100)")
+        db.session.commit()
+    except:
+        pass
+    try:
+        db.session.execute("ALTER TABLE user ADD COLUMN reset_token_expiry DATETIME")
         db.session.commit()
     except:
         pass
@@ -298,6 +328,19 @@ def estimate_delivery_date(pincode):
         days = 6
     delivery_date = datetime.utcnow() + timedelta(days=days)
     return delivery_date, days
+
+# ---------- NEW: Password Reset Helper Functions ----------
+def generate_reset_token(email):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    return serializer.dumps(email, salt='password-reset-salt')
+
+def confirm_reset_token(token, expiration=3600):
+    serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
+    try:
+        email = serializer.loads(token, salt='password-reset-salt', max_age=expiration)
+    except:
+        return None
+    return email
 
 # ---------- GOOGLE AUTH ROUTES ----------
 @app.route('/login/google')
@@ -398,9 +441,65 @@ def logout():
     session.pop('referral', None)
     return redirect('/')
 
+# ---------- NEW: Password Reset Routes ----------
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email')
+        user = User.query.filter_by(email=email).first()
+        if user:
+            token = generate_reset_token(email)
+            user.reset_token = token
+            user.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+            db.session.commit()
+            
+            reset_url = url_for('reset_password', token=token, _external=True)
+            subject = "Password Reset Request - ChoiceHub"
+            body = f"""Hello {user.name},
+You requested to reset your password for ChoiceHub.
+Click the link below to reset your password (valid for 1 hour):
+{reset_url}
+
+If you did not request this, please ignore this email.
+Regards,
+ChoiceHub Team
+"""
+            msg = Message(subject, recipients=[email], body=body)
+            mail.send(msg)
+            flash('📧 Password reset link sent to your email. Please check your inbox (and spam folder).')
+        else:
+            flash('❌ No account found with that email.')
+        return redirect('/forgot-password')
+    return render_template('forgot_password.html')
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    user = User.query.filter_by(reset_token=token).first()
+    if not user or user.reset_token_expiry < datetime.utcnow():
+        flash('❌ Invalid or expired token. Please request a new reset link.')
+        return redirect('/forgot-password')
+    
+    if request.method == 'POST':
+        password = request.form.get('password')
+        confirm = request.form.get('confirm_password')
+        if password != confirm:
+            flash('❌ Passwords do not match.')
+            return redirect(request.url)
+        if len(password) < 6:
+            flash('❌ Password must be at least 6 characters.')
+            return redirect(request.url)
+        user.password_hash = generate_password_hash(password)
+        user.reset_token = None
+        user.reset_token_expiry = None
+        db.session.commit()
+        flash('✅ Password reset successful! Please login with your new password.')
+        return redirect('/login')
+    return render_template('reset_password.html', token=token)
+
 # ---------- ROUTES (YOUR EXISTING CODE) ----------
 # ... (ALL YOUR EXISTING ROUTES - index, search, product, cart, checkout, profile, admin, etc.)
 # Copy and paste your existing routes here exactly as they were.
+# Note: The routes below are exactly as you provided, no changes.
 
 @app.route('/')
 def index():
