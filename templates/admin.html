@@ -1,0 +1,595 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="admin-wrapper">
+    <div class="admin-header">
+        <h1>👑 Admin Dashboard</h1>
+        <div class="admin-user">{{ current_user.name }}</div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="admin-stats">
+        <div class="stat-card">
+            <div class="stat-icon">📦</div>
+            <div class="stat-number">{{ stats.total_orders }}</div>
+            <div class="stat-label">Total Orders</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🛍️</div>
+            <div class="stat-number">{{ stats.total_products }}</div>
+            <div class="stat-label">Products</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-number">{{ stats.total_users }}</div>
+            <div class="stat-label">Users</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">💰</div>
+            <div class="stat-number">₹{{ stats.total_revenue }}</div>
+            <div class="stat-label">Revenue</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⏳</div>
+            <div class="stat-number">{{ stats.pending_orders }}</div>
+            <div class="stat-label">Pending Orders</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⚠️</div>
+            <div class="stat-number">{{ stats.low_stock }}</div>
+            <div class="stat-label">Low Stock</div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="admin-tabs">
+        <button class="active" data-tab="products">📦 Products</button>
+        <button data-tab="orders">📋 Orders</button>
+        <button data-tab="coupons">🏷️ Coupons</button>
+        <button data-tab="sellers">🤝 Sellers</button>
+        <button data-tab="users">👥 Users</button>
+        <button data-tab="categories">📂 Categories</button>
+        <button data-tab="banners">🖼️ Banners</button>
+    </div>
+
+    <!-- ========== PRODUCTS TAB ========== -->
+    <div id="tab-products" class="tab-content active">
+        <div class="admin-section">
+            <div class="section-header">
+                <h2>📦 Products</h2>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <a href="/admin/download-template" class="btn btn-outline">📥 Download Template</a>
+                    <form method="POST" action="/admin/import-excel" enctype="multipart/form-data" style="display:inline-flex; gap:8px; align-items:center;">
+                        <input type="file" name="excel_file" accept=".xlsx" style="padding:4px; font-size:0.9rem;">
+                        <button type="submit" class="btn btn-outline">📤 Import Excel</button>
+                    </form>
+                    <button class="btn btn-primary" onclick="document.getElementById('addProductModal').style.display='flex'">➕ Add Product</button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Image</th><th>Name</th><th>Price</th><th>Stock</th><th>Category</th><th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in products %}
+                        <tr>
+                            <td><img src="{{ url_for('static', filename='uploads/' + p.main_image()) if p.main_image() else '/static/img/noimage.png' }}" alt="{{ p.name }}" style="width:50px; height:50px; object-fit:cover; border-radius:8px;"></td>
+                            <td><strong>{{ p.name }}</strong></td>
+                            <td>₹{{ p.selling_price }}</td>
+                            <td>{{ p.stock }}</td>
+                            <td>{{ p.category_ref.name if p.category_ref else '-' }}</td>
+                            <td>
+                                <a href="/admin/edit-product/{{ p.id }}" class="btn btn-sm btn-outline">✏️ Edit</a>
+                                <a href="/admin/delete-product/{{ p.id }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete this product?')">🗑️ Delete</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" style="text-align:center; color:#888;">No products yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== ORDERS TAB ========== -->
+    <div id="tab-orders" class="tab-content">
+        <div class="admin-section">
+            <h2>📋 Orders</h2>
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Order #</th><th>Customer</th><th>Amount</th><th>Status</th><th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in orders %}
+                        <tr>
+                            <td>{{ o.order_number }}</td>
+                            <td>{{ o.customer.name }}</td>
+                            <td>₹{{ o.net_amount }}</td>
+                            <td><span class="status-badge {{ o.status.lower() }}">{{ o.status }}</span></td>
+                            <td>
+                                <a href="/admin/update-order/{{ o.id }}/Confirmed" class="btn btn-sm btn-outline">Confirm</a>
+                                <a href="/admin/update-order/{{ o.id }}/Shipped" class="btn btn-sm btn-outline">Ship</a>
+                                <a href="/admin/update-order/{{ o.id }}/Delivered" class="btn btn-sm btn-primary">Deliver</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" style="text-align:center; color:#888;">No orders yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== COUPONS TAB ========== -->
+    <div id="tab-coupons" class="tab-content">
+        <div class="admin-section">
+            <div class="section-header">
+                <h2>🏷️ Coupons</h2>
+                <button class="btn btn-primary" onclick="document.getElementById('couponForm').style.display='block'">➕ Add Coupon</button>
+            </div>
+            <form method="POST" action="/admin/add-coupon" id="couponForm" style="display:none; background:#f8fafc; padding:16px; border-radius:12px; margin-bottom:16px;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px;">
+                    <input type="text" name="code" placeholder="Code" required>
+                    <select name="discount_type"><option value="percentage">%</option><option value="flat">₹</option></select>
+                    <input type="number" name="discount_value" step="0.01" placeholder="Value" required>
+                    <input type="number" name="min_order" placeholder="Min Order" value="0">
+                    <input type="number" name="max_discount" step="0.01" placeholder="Max Disc.">
+                    <input type="date" name="expiry" required>
+                    <button type="submit" class="btn btn-primary">Add</button>
+                </div>
+            </form>
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead><tr><th>Code</th><th>Type</th><th>Value</th><th>Min Order</th><th>Expiry</th><th>Action</th></tr></thead>
+                    <tbody>
+                        {% for c in coupons %}
+                        <tr>
+                            <td><strong>{{ c.code }}</strong></td>
+                            <td>{{ c.discount_type }}</td>
+                            <td>{{ c.discount_value }}</td>
+                            <td>₹{{ c.min_order_amount }}</td>
+                            <td>{{ c.expiry_date.strftime('%d %b %Y') }}</td>
+                            <td><a href="/admin/delete-coupon/{{ c.id }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')">Delete</a></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" style="text-align:center; color:#888;">No coupons.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== SELLERS TAB ========== -->
+    <div id="tab-sellers" class="tab-content">
+        <div class="admin-section">
+            <div class="section-header">
+                <h2>🤝 Sellers</h2>
+                <button class="btn btn-primary" onclick="document.getElementById('sellerForm').style.display='block'">➕ Create Seller</button>
+            </div>
+            <form method="POST" action="/admin/create-seller" id="sellerForm" style="display:none; background:#f8fafc; padding:16px; border-radius:12px; margin-bottom:16px;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px;">
+                    <input type="text" name="name" placeholder="Name" required>
+                    <input type="text" name="phone" placeholder="Phone" required>
+                    <input type="text" name="password" placeholder="Password" required>
+                    <input type="text" name="store_name" placeholder="Store Name" required>
+                    <input type="number" name="commission_rate" placeholder="Commission %" value="10" step="0.5">
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead><tr><th>Name</th><th>Phone</th><th>Store</th><th>Commission</th><th>Earned</th><th>Referral Code</th></tr></thead>
+                    <tbody>
+                        {% for s in sellers %}
+                        <tr>
+                            <td>{{ s.user.name }}</td>
+                            <td>{{ s.user.phone }}</td>
+                            <td>{{ s.store_name }}</td>
+                            <td>{{ s.commission_rate }}%</td>
+                            <td>₹{{ s.total_earned }}</td>
+                            <td><code>{{ s.user.referral_code }}</code></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" style="text-align:center; color:#888;">No sellers.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== USERS TAB ========== -->
+    <div id="tab-users" class="tab-content">
+        <div class="admin-section">
+            <h2>👥 All Users</h2>
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Role</th><th>Referral Code</th></tr></thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td>{{ u.name }}</td>
+                            <td>{{ u.phone }}</td>
+                            <td>{{ u.email or '-' }}</td>
+                            <td><span class="role-badge">{{ u.role }}</span></td>
+                            <td>{{ u.referral_code or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CATEGORIES TAB ========== -->
+    <div id="tab-categories" class="tab-content">
+        <div class="admin-section">
+            <div class="section-header">
+                <h2>📂 Categories</h2>
+                <form method="POST" action="/admin/add-category" style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" name="name" placeholder="Category Name" required>
+                    <button type="submit" class="btn btn-primary">➕ Add</button>
+                </form>
+            </div>
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead><tr><th>Name</th><th>Slug</th><th>Products</th><th>Action</th></tr></thead>
+                    <tbody>
+                        {% for cat in categories %}
+                        <tr>
+                            <td>{{ cat.name }}</td>
+                            <td>{{ cat.slug }}</td>
+                            <td>{{ cat.products|length }}</td>
+                            <td><a href="/admin/delete-category/{{ cat.id }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')">Delete</a></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" style="text-align:center; color:#888;">No categories.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== BANNERS TAB ========== -->
+    <div id="tab-banners" class="tab-content">
+        <div class="admin-section">
+            <div class="section-header">
+                <h2>🖼️ Banners</h2>
+                <form method="POST" action="/admin/add-banner" enctype="multipart/form-data" class="banner-form">
+                    <input type="text" name="title" placeholder="Title">
+                    <input type="text" name="link" placeholder="Link (URL)">
+                    <input type="file" name="image" accept="image/*" required>
+                    <button type="submit" class="btn btn-primary">➕ Add Banner</button>
+                </form>
+            </div>
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead><tr><th>Image</th><th>Title</th><th>Link</th><th>Action</th></tr></thead>
+                    <tbody>
+                        {% for b in banners %}
+                        <tr>
+                            <td><img src="{{ url_for('static', filename='uploads/' + b.image) }}" alt="{{ b.title }}" style="width:60px; height:40px; object-fit:cover; border-radius:4px;"></td>
+                            <td>{{ b.title or '-' }}</td>
+                            <td>{{ b.link or '-' }}</td>
+                            <td><a href="/admin/delete-banner/{{ b.id }}" class="btn btn-sm btn-danger" onclick="return confirm('Delete this banner?')">Delete</a></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" style="text-align:center; color:#888;">No banners.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Add Product Button -->
+    <div class="fab" onclick="document.getElementById('addProductModal').style.display='flex'">➕</div>
+
+    <!-- ============================================================ -->
+    <!-- ADD PRODUCT MODAL – ALL FIELDS INCLUDED -->
+    <!-- ============================================================ -->
+    <div id="addProductModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:800px;">
+            <span class="modal-close" onclick="document.getElementById('addProductModal').style.display='none'">&times;</span>
+            <h2 style="margin-bottom:16px;">➕ Add New Product</h2>
+            <form method="POST" action="/admin/add-product" enctype="multipart/form-data">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                    <!-- Left column -->
+                    <div>
+                        <label>Name *</label>
+                        <input type="text" name="name" required>
+                    </div>
+                    <div>
+                        <label>Category *</label>
+                        <select name="category_id" required>
+                            {% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label>Brand</label>
+                        <input type="text" name="brand">
+                    </div>
+                    <div>
+                        <label>SKU</label>
+                        <input type="text" name="sku" placeholder="Auto">
+                    </div>
+                    <div>
+                        <label>Cost Price</label>
+                        <input type="number" name="cost_price" step="0.01" value="0">
+                    </div>
+                    <div>
+                        <label>Selling Price *</label>
+                        <input type="number" name="selling_price" step="0.01" required>
+                    </div>
+                    <div>
+                        <label>MRP *</label>
+                        <input type="number" name="mrp" step="0.01" required>
+                    </div>
+                    <div>
+                        <label>Stock</label>
+                        <input type="number" name="stock" value="0">
+                    </div>
+                    <div>
+                        <label>Weight (kg)</label>
+                        <input type="number" name="weight" step="0.01">
+                    </div>
+                    <div>
+                        <label>Dimensions</label>
+                        <input type="text" name="dimensions" placeholder="e.g., 10x10x5 cm">
+                    </div>
+                    <div>
+                        <label>Material</label>
+                        <input type="text" name="material">
+                    </div>
+                    <div>
+                        <label>Warranty</label>
+                        <input type="text" name="warranty" placeholder="e.g., 1 year">
+                    </div>
+                    <div>
+                        <label>Return Policy</label>
+                        <input type="text" name="return_policy" placeholder="e.g., 7 days">
+                    </div>
+                    <div>
+                        <label>Delivery Time</label>
+                        <input type="text" name="delivery_time" placeholder="e.g., 2-3 Business Days">
+                    <!-- Add Product Modal (Updated – without delivery_time) -->
+<div id="addProductModal" class="modal" style="display:none;">
+    <div class="modal-content" style="max-width:800px;">
+        <span class="modal-close" onclick="document.getElementById('addProductModal').style.display='none'">&times;</span>
+        <h2 style="margin-bottom:16px;">➕ Add New Product</h2>
+        <form method="POST" action="/admin/add-product" enctype="multipart/form-data">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                <!-- Left column -->
+                <div><label>Name *</label><input type="text" name="name" required></div>
+                <div><label>Category *</label><select name="category_id" required>{% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}</select></div>
+                <div><label>Brand</label><input type="text" name="brand"></div>
+                <div><label>SKU</label><input type="text" name="sku" placeholder="Auto"></div>
+                <div><label>Cost Price</label><input type="number" name="cost_price" step="0.01" value="0"></div>
+                <div><label>Selling Price *</label><input type="number" name="selling_price" step="0.01" required></div>
+                <div><label>MRP *</label><input type="number" name="mrp" step="0.01" required></div>
+                <div><label>Stock</label><input type="number" name="stock" value="0"></div>
+                <div><label>Weight (kg)</label><input type="number" name="weight" step="0.01"></div>
+                <div><label>Dimensions</label><input type="text" name="dimensions" placeholder="e.g., 10x10x5 cm"></div>
+                <div><label>Material</label><input type="text" name="material"></div>
+                <div><label>Warranty</label><input type="text" name="warranty" placeholder="e.g., 1 year"></div>
+                <div><label>Return Policy</label><input type="text" name="return_policy" placeholder="e.g., 7 days"></div>
+                <div><label>Video URL</label><input type="text" name="video_url" placeholder="YouTube link"></div>
+                <div><label>Care Instructions</label><input type="text" name="care_instructions"></div>
+                <!-- delivery_time removed -->
+            </div>
+
+            <!-- Full width fields -->
+            <div style="margin-top:8px;">
+                <label>Short Description</label>
+                <input type="text" name="short_description">
+            </div>
+            <div>
+                <label>Description</label>
+                <textarea name="description" rows="3"></textarea>
+            </div>
+            <div>
+                <label>Features (one per line or comma separated)</label>
+                <textarea name="features" rows="3" placeholder="Feature 1&#10;Feature 2"></textarea>
+            </div>
+            <div>
+                <label>Specifications (key: value per line)</label>
+                <textarea name="specifications" rows="3" placeholder="Weight: 1.2 kg&#10;Color: Gold"></textarea>
+            </div>
+            <div>
+                <label>Images (multiple)</label>
+                <input type="file" name="images" multiple accept="image/*">
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:12px; margin:8px 0;">
+                <label><input type="checkbox" name="is_featured"> Featured</label>
+                <label><input type="checkbox" name="is_bestseller"> Bestseller</label>
+                <label><input type="checkbox" name="is_trending"> Trending</label>
+                <label><input type="checkbox" name="is_new"> New</label>
+                <label><input type="checkbox" name="free_delivery" checked> Free Delivery</label>
+                <label><input type="checkbox" name="cod_available" checked> COD</label>
+            </div>
+            <div>
+                <label>Assign Seller</label>
+                <select name="seller_id">
+                    <option value="">Admin Product</option>
+                    {% for s in sellers %}<option value="{{ s.id }}">{{ s.user.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%; margin-top:12px;">➕ Add Product</button>
+        </form>
+    </div>
+</div>
+                    <div>
+                        <label>Video URL</label>
+                        <input type="text" name="video_url" placeholder="YouTube link">
+                    </div>
+                    <div>
+                        <label>Care Instructions</label>
+                        <input type="text" name="care_instructions">
+                    </div>
+                </div>
+
+                <!-- Full width fields -->
+                <div style="margin-top:8px;">
+                    <label>Short Description</label>
+                    <input type="text" name="short_description">
+                </div>
+                <div>
+                    <label>Description</label>
+                    <textarea name="description" rows="3"></textarea>
+                </div>
+                <div>
+                    <label>Features (one per line or comma separated)</label>
+                    <textarea name="features" rows="3" placeholder="Feature 1&#10;Feature 2"></textarea>
+                </div>
+                <div>
+                    <label>Specifications (key: value per line)</label>
+                    <textarea name="specifications" rows="3" placeholder="Weight: 1.2 kg&#10;Color: Gold"></textarea>
+                </div>
+                <div>
+                    <label>Images (multiple)</label>
+                    <input type="file" name="images" multiple accept="image/*">
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:12px; margin:8px 0;">
+                    <label><input type="checkbox" name="is_featured"> Featured</label>
+                    <label><input type="checkbox" name="is_bestseller"> Bestseller</label>
+                    <label><input type="checkbox" name="is_trending"> Trending</label>
+                    <label><input type="checkbox" name="is_new"> New</label>
+                    <label><input type="checkbox" name="free_delivery" checked> Free Delivery</label>
+                    <label><input type="checkbox" name="cod_available" checked> COD</label>
+                </div>
+                <div>
+                    <label>Assign Seller</label>
+                    <select name="seller_id">
+                        <option value="">Admin Product</option>
+                        {% for s in sellers %}<option value="{{ s.id }}">{{ s.user.name }}</option>{% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%; margin-top:12px;">➕ Add Product</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ─── TAB PERSISTENCY ──────────────────────────────────────────
+    (function() {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab) {
+            // Activate the correct tab
+            document.querySelectorAll('.admin-tabs button').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.tab === tab) {
+                    btn.classList.add('active');
+                }
+            });
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            const target = document.getElementById('tab-' + tab);
+            if (target) target.classList.add('active');
+        }
+    })();
+
+    // ─── TAB SWITCHING (updates URL) ─────────────────────────────
+    document.querySelectorAll('.admin-tabs button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const tab = this.dataset.tab;
+            // Update URL without reload
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tab);
+            window.history.pushState({}, '', url);
+            // Switch tabs
+            document.querySelectorAll('.admin-tabs button').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+        });
+    });
+
+    // ─── MODAL CLOSE ON OUTSIDE CLICK ────────────────────────────
+    window.onclick = function(e) {
+        if (e.target.classList.contains('modal')) {
+            e.target.style.display = 'none';
+        }
+    }
+</script>
+
+<style>
+    /* ─── Premium Admin Styles ──────────────────────────────────── */
+    .admin-wrapper { background:#fff; border-radius:20px; padding:24px; box-shadow:0 4px 24px rgba(0,0,0,0.04); }
+    .admin-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:20px; }
+    .admin-header h1 { font-size:1.8rem; font-weight:700; color:#1a1a1a; }
+    .admin-header h1::before { content:''; display:inline-block; width:6px; height:32px; background:linear-gradient(180deg,#b8860b,#d4af37); border-radius:4px; margin-right:10px; }
+    .admin-user { background:linear-gradient(135deg,#f8f6f2,#e8e4dc); padding:6px 16px; border-radius:30px; font-weight:500; color:#b8860b; border:1px solid #b8860b; }
+
+    .admin-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:16px; margin-bottom:24px; }
+    .stat-card { background:linear-gradient(145deg,#faf9f6,#f1efe9); padding:16px; border-radius:16px; text-align:center; border:1px solid #e8e4dc; transition:0.2s; }
+    .stat-card:hover { transform:translateY(-4px); box-shadow:0 8px 24px rgba(184,134,11,0.12); }
+    .stat-icon { font-size:2.2rem; }
+    .stat-number { font-size:2rem; font-weight:700; color:#b8860b; }
+    .stat-label { color:#5b5b6b; font-size:0.9rem; font-weight:500; }
+
+    .admin-tabs { display:flex; flex-wrap:wrap; gap:4px; border-bottom:2px solid #e8e4dc; margin-bottom:20px; }
+    .admin-tabs button { background:transparent; border:none; padding:10px 18px; font-weight:600; color:#5b5b6b; border-bottom:3px solid transparent; cursor:pointer; font-size:0.95rem; transition:0.2s; }
+    .admin-tabs button.active { color:#b8860b; border-bottom-color:#b8860b; background:rgba(184,134,11,0.04); border-radius:10px 10px 0 0; }
+
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+
+    .admin-section { margin-bottom:30px; }
+    .section-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:16px; gap:8px; }
+
+    .table-responsive { overflow-x:auto; }
+    .admin-table { width:100%; border-collapse:collapse; font-size:0.95rem; }
+    .admin-table th { background:#f1efe9; padding:10px 12px; text-align:left; font-weight:600; color:#1a1a1a; }
+    .admin-table td { padding:10px 12px; border-bottom:1px solid #f0ede8; }
+    .admin-table tr:hover td { background:#faf9f6; }
+
+    .btn-sm { padding:4px 12px; font-size:0.8rem; }
+
+    .status-badge { display:inline-block; padding:2px 10px; border-radius:30px; font-size:0.75rem; font-weight:600; }
+    .status-badge.placed { background:#fef3c7; color:#92400e; }
+    .status-badge.confirmed { background:#dbeafe; color:#1e40af; }
+    .status-badge.shipped { background:#d1fae5; color:#065f46; }
+    .status-badge.delivered { background:#d1fae5; color:#065f46; }
+    .status-badge.cancelled { background:#fee2e2; color:#991b1b; }
+
+    .role-badge { display:inline-block; padding:2px 10px; border-radius:30px; font-size:0.75rem; font-weight:600; background:#e8e4dc; color:#1a1a1a; }
+
+    .fab { position:fixed; bottom:30px; right:30px; background:linear-gradient(145deg,#b8860b,#d4af37); color:#fff; width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:2rem; box-shadow:0 8px 24px rgba(184,134,11,0.3); cursor:pointer; z-index:100; border:0; transition:0.2s; }
+    .fab:hover { transform:scale(1.05); }
+
+    .modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); backdrop-filter:blur(4px); display:flex; justify-content:center; align-items:center; z-index:200; }
+    .modal-content { background:#fff; padding:28px; border-radius:24px; max-width:800px; width:95%; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.15); animation:slideUp 0.25s ease; }
+    @keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+    .modal-close { float:right; font-size:1.8rem; cursor:pointer; background:0; border:0; color:#888; }
+    .modal-close:hover { color:#000; }
+
+    .modal-content input, .modal-content select, .modal-content textarea { width:100%; padding:8px 12px; border:1.5px solid #e2e8f0; border-radius:8px; font-size:1rem; margin-top:4px; transition:0.2s; }
+    .modal-content input:focus, .modal-content select:focus, .modal-content textarea:focus { border-color:#b8860b; outline:none; box-shadow:0 0 0 4px rgba(184,134,11,0.1); }
+    .modal-content label { font-weight:600; font-size:0.9rem; color:#1a1a1a; }
+    .modal-content input[type="checkbox"] { width:auto; margin-right:4px; }
+
+    .banner-form { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .banner-form input[type="text"], .banner-form input[type="file"] { padding:8px 12px; border:1.5px solid #e2e8f0; border-radius:10px; font-size:0.95rem; background:#fff; }
+
+    .btn-primary { background:linear-gradient(145deg,#b8860b,#d4af37); color:#1a1a1a; border:none; }
+    .btn-primary:hover { background:#a0750a; color:#fff; }
+    .btn-outline { background:transparent; border:1.5px solid #b8860b; color:#b8860b; }
+    .btn-outline:hover { background:#b8860b; color:#fff; }
+
+    @media (max-width:640px) {
+        .admin-stats { grid-template-columns:1fr 1fr; }
+        .admin-header h1 { font-size:1.4rem; }
+    }
+</style>
+{% endblock %}

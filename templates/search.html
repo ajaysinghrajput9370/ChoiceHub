@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Search Results – ChoiceHub{% endblock %}
+{% block content %}
+<h1>🔍 Search Results</h1>
+
+<!-- Filters only (no search input, no search button) -->
+<form method="GET" action="/search" class="search-filters">
+    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:16px;">
+        <!-- Category Filter -->
+        <select name="category" style="padding:10px 16px; border:1.5px solid #e2e8f0; border-radius:30px; background:#fff;">
+            <option value="">All Categories</option>
+            {% for cat in categories %}
+            <option value="{{ cat.slug }}" {% if selected_category == cat.slug %}selected{% endif %}>{{ cat.name }}</option>
+            {% endfor %}
+        </select>
+        <!-- Sort Filter -->
+        <select name="sort" style="padding:10px 16px; border:1.5px solid #e2e8f0; border-radius:30px; background:#fff;">
+            <option value="newest">Newest</option>
+            <option value="price_low">Price: Low to High</option>
+            <option value="price_high">Price: High to Low</option>
+        </select>
+        <!-- Apply button (renamed from "Search") -->
+        <button type="submit" class="btn btn-primary">Apply Filters</button>
+    </div>
+</form>
+
+{% if products %}
+<div class="product-grid">
+    {% for p in products %}
+    <div class="product-card">
+        <a href="/product/{{ p.slug }}" class="product-link">
+            <div class="product-image">
+                <img src="{{ url_for('static', filename='uploads/' + p.main_image()) if p.main_image() else 'https://via.placeholder.com/300x300?text=No+Image' }}" alt="{{ p.name }}">
+            </div>
+        </a>
+        <div class="product-info">
+            <a href="/product/{{ p.slug }}" class="product-title"><h3>{{ p.name }}</h3></a>
+            <div class="price-row">
+                <span class="price">₹{{ p.selling_price }}</span>
+                <span class="mrp">₹{{ p.mrp }}</span>
+                {% if p.discount() %}<span class="discount">-{{ p.discount() }}%</span>{% endif %}
+            </div>
+            <div class="product-actions">
+                <a href="/product/{{ p.slug }}" class="btn btn-outline">View</a>
+                {% if current_user.is_authenticated and current_user.role == 'customer' %}
+                <a href="/add-to-cart/{{ p.id }}" class="btn btn-primary">Add</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p style="text-align:center; padding:40px 0; color:#888;">No products found. Try different filters.</p>
+{% endif %}
+
+<style>
+    .search-filters {
+        background: #f8fafc;
+        padding: 12px 16px;
+        border-radius: 16px;
+        margin-bottom: 20px;
+    }
+    .search-filters select {
+        min-width: 150px;
+    }
+    @media (max-width: 640px) {
+        .search-filters {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .search-filters select {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}

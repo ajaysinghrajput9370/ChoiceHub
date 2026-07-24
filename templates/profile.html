@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}My Orders{% endblock %}
+{% block content %}
+<h1>👤 My Orders</h1>
+
+<div style="margin-bottom:20px;">
+    <a href="/profile/addresses" class="btn btn-outline">📍 Manage Addresses</a>
+</div>
+
+{% if orders %}
+    {% for o in orders %}
+    <div class="order-card">
+        <div class="order-header">
+            <span><b>#{{ o.order_number }}</b></span>
+            <span class="status-badge {{ o.status.lower() }}">{{ o.status }}</span>
+        </div>
+        <div class="order-details">
+            <p><strong>Net:</strong> ₹{{ o.net_amount }}</p>
+            <p><strong>Date:</strong> {{ o.created_at.strftime('%d %b %Y, %I:%M %p') }}</p>
+            <p><strong>Address:</strong> {{ o.shipping_address }}</p>
+            {% if o.delivery_date %}
+            <p><strong>Expected Delivery:</strong> {{ o.delivery_date.strftime('%d %b %Y') }}</p>
+            {% endif %}
+        </div>
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+            {% if o.status in ['Placed', 'Confirmed'] %}
+            <a href="/cancel-order/{{ o.id }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to cancel this order?')">Cancel Order</a>
+            {% endif %}
+            <a href="/add-review/{{ o.id }}" class="btn btn-sm btn-outline">⭐ Write Review</a>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div style="text-align:center; padding:60px 20px; background:#fff; border-radius:20px; box-shadow:0 4px 20px rgba(0,0,0,0.04);">
+        <p style="font-size:1.2rem; color:#64748b;">🛍️ No orders yet.</p>
+        <p style="color:#94a3b8;">Start shopping and your orders will appear here.</p>
+        <a href="/" class="btn btn-primary" style="margin-top:16px;">Start Shopping</a>
+    </div>
+{% endif %}
+
+<style>
+    .order-card {
+        background: #fff;
+        padding: 16px 20px;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        margin-bottom: 12px;
+        border: 1px solid #e8e4dc;
+        transition: 0.2s;
+    }
+    .order-card:hover {
+        box-shadow: 0 4px 16px rgba(184,134,11,0.08);
+    }
+    .order-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 8px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .order-details p {
+        margin: 4px 0;
+        color: #475569;
+        font-size: 0.95rem;
+    }
+    .status-badge {
+        display: inline-block;
+        padding: 2px 12px;
+        border-radius: 30px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .status-badge.placed { background: #fef3c7; color: #92400e; }
+    .status-badge.confirmed { background: #dbeafe; color: #1e40af; }
+    .status-badge.shipped { background: #d1fae5; color: #065f46; }
+    .status-badge.delivered { background: #d1fae5; color: #065f46; }
+    .status-badge.cancelled { background: #fee2e2; color: #991b1b; }
+
+    .btn-sm { padding: 4px 14px; font-size: 0.8rem; }
+    .btn-outline {
+        background: transparent;
+        border: 1.5px solid #b8860b;
+        color: #b8860b;
+        border-radius: 30px;
+        text-decoration: none;
+        font-weight: 600;
+        display: inline-block;
+        transition: 0.2s;
+    }
+    .btn-outline:hover {
+        background: #b8860b;
+        color: #fff;
+    }
+    .btn-danger {
+        background: #dc2626;
+        color: #fff;
+        border: none;
+        border-radius: 30px;
+        text-decoration: none;
+        font-weight: 600;
+        display: inline-block;
+        transition: 0.2s;
+    }
+    .btn-danger:hover {
+        background: #b91c1c;
+    }
+    .btn-primary {
+        background: linear-gradient(145deg, #b8860b, #d4af37);
+        color: #1a1a1a;
+        border: none;
+        border-radius: 30px;
+        text-decoration: none;
+        font-weight: 600;
+        display: inline-block;
+        padding: 10px 24px;
+        transition: 0.2s;
+    }
+    .btn-primary:hover {
+        background: #a0750a;
+        color: #fff;
+    }
+</style>
+{% endblock %}

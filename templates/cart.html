@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Cart{% endblock %}
+{% block content %}
+<h1>🛒 Your Cart</h1>
+{% if items %}
+    {% for i in items %}
+    <div class="cart-item">
+        <div>
+            <b>{{ i.product.name }}</b><br>
+            ₹{{ i.product.selling_price }} x {{ i.quantity }}
+        </div>
+        <div class="qty-control">
+            <a href="/update-cart/{{ i.id }}/{{ i.quantity-1 }}">-</a>
+            <span>{{ i.quantity }}</span>
+            <a href="/update-cart/{{ i.id }}/{{ i.quantity+1 }}">+</a>
+            <a href="/remove-cart/{{ i.id }}" class="remove">✕</a>
+        </div>
+    </div>
+    {% endfor %}
+    <div class="cart-total">
+        <h3>Total: ₹{{ total }}</h3>
+        <a href="/checkout" class="btn btn-gold">Proceed to Checkout</a>
+    </div>
+{% else %}
+    <p>Your cart is empty.</p>
+{% endif %}
+{% endblock %}
