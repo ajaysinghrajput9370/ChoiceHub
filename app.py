@@ -6,6 +6,7 @@ Reviews, Wishlist, Pincode Delivery, Order Tracking, Excel import, etc.
 import os
 import uuid
 import random
+import traceback                           # ← Step 1
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -41,6 +42,7 @@ app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'true').lower() in [
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER')
+app.config["MAIL_TIMEOUT"] = 10            # ← Step 3
 
 mail = Mail(app)
 
@@ -72,8 +74,8 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), default='customer')
     referral_code = db.Column(db.String(20), unique=True, nullable=True)
     wishlist = db.Column(db.Text, nullable=True)
-    reset_token = db.Column(db.String(100), unique=True, nullable=True)        # ← नया
-    reset_token_expiry = db.Column(db.DateTime, nullable=True)                 # ← नया
+    reset_token = db.Column(db.String(100), unique=True, nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     orders = db.relationship('Order', backref='customer', lazy=True)
     reviews = db.relationship('Review', backref='user', lazy=True)
@@ -463,12 +465,16 @@ ChoiceHub Team
             msg = Message(subject, recipients=[email], body=body)
             try:
                 print("📧 Sending email...")
-                mail.send(msg)
+                with mail.connect() as conn:        # ← Step 2 (new)
+                    conn.send(msg)
                 print("✅ Email sent successfully")
-                flash('📧 Password reset link sent to your email. Please check your inbox (and spam folder).')
+                flash("📧 Password reset link sent successfully.")
             except Exception as e:
-                print("❌ MAIL ERROR:", str(e))
-                flash(f'❌ Email sending failed: {str(e)}. Please try again later.')
+                print("=" * 80)
+                print("MAIL ERROR")
+                traceback.print_exc()               # ← Step 2
+                print("=" * 80)
+                flash("Email sending failed.")
         else:
             flash('❌ No account found with that email.')
         return redirect('/forgot-password')
@@ -1389,4 +1395,4 @@ def internal_error(e):
 
 # ---------- RUN ----------
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)   # production mode
+    app.run(debug=False, host='0.0.0.0', port=5000)
