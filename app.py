@@ -1,5 +1,5 @@
 """
-THE CHOICE HUB – FULL E‑COMMERCE (Pillow‑free)
+THE CHOICE HUB – FULL E‑COMMERCE (Google OAuth + Production Ready)
 All features: Customer, Admin, Seller, Cart, Checkout, Coupons, Offers,
 Reviews, Wishlist, Pincode Delivery, Order Tracking, Excel import, etc.
 """
@@ -14,11 +14,15 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+from authlib.integrations.flask_client import OAuth
 import requests
+
+load_dotenv()  # Load .env for local development
 
 # ---------- APP SETUP ----------
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///choicehub.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -28,32 +32,17 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Simple upload (no Pillow)
-def upload_image(file):
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        unique_name = f"{uuid.uuid4().hex}_{filename}"
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_name))
-        return unique_name
-    return None
+# ---------- GOOGLE OAUTH ----------
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
 
-def download_and_save_image(url):
-    try:
-        resp = requests.get(url, timeout=10)
-        if resp.status_code == 200:
-            original = url.split('/')[-1].split('?')[0]
-            ext = original.rsplit('.', 1)[1].lower() if '.' in original else 'jpg'
-            if ext not in ['jpg','jpeg','png','gif','webp']:
-                ext = 'jpg'
-            fname = f"{uuid.uuid4().hex}.{ext}"
-            path = os.path.join(app.config['UPLOAD_FOLDER'], fname)
-            with open(path, 'wb') as f:
-                f.write(resp.content)
-            return fname
-    except:
-        pass
-    return None
-
+# ---------- DB & LOGIN ----------
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -63,9 +52,11 @@ login_manager.login_view = 'login'
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    phone = db.Column(db.String(15), unique=True, nullable=False)
+    phone = db.Column(db.String(15), unique=True, nullable=True)
     email = db.Column(db.String(100), unique=True, nullable=True)
-    password_hash = db.Column(db.String(200), nullable=False)
+    password_hash = db.Column(db.String(200), nullable=True)
+    google_id = db.Column(db.String(100), unique=True, nullable=True)
+    profile_pic = db.Column(db.String(200), nullable=True)
     role = db.Column(db.String(20), default='customer')
     referral_code = db.Column(db.String(20), unique=True, nullable=True)
     wishlist = db.Column(db.Text, nullable=True)
@@ -244,7 +235,7 @@ class Banner(db.Model):
     position = db.Column(db.Integer, default=0)
     is_active = db.Column(db.Boolean, default=True)
 
-# ---------- DATABASE INIT ----------
+# ---------- DATABASE INIT (NO DEMO DATA) ----------
 with app.app_context():
     db.create_all()
     # Ensure images column exists (legacy)
@@ -254,15 +245,7 @@ with app.app_context():
     except:
         pass
 
-    # Create default categories
-    categories = ['Gifts', 'Toys', 'Home Decor', 'Spiritual Decor']
-    for cat in categories:
-        if not Category.query.filter_by(name=cat).first():
-            category = Category(name=cat, slug=cat.lower().replace(' ', '-'))
-            db.session.add(category)
-    db.session.commit()
-
-    # Create admin user if missing
+    # ONLY create admin if NONE exists (no default categories/coupons/sellers)
     if not User.query.filter_by(role='admin').first():
         admin = User(
             name='Super Admin',
@@ -274,35 +257,7 @@ with app.app_context():
         )
         db.session.add(admin)
         db.session.commit()
-
-    # Default seller
-    if not User.query.filter_by(role='seller').first():
-        seller_user = User(
-            name='Ramesh Traders',
-            phone='8888888888',
-            password_hash=generate_password_hash('seller123'),
-            role='seller',
-            referral_code='RAMESH10'
-        )
-        db.session.add(seller_user)
-        db.session.flush()
-        seller = Seller(user_id=seller_user.id, store_name='Ramesh Gift Corner', commission_rate=10.0)
-        db.session.add(seller)
-        db.session.commit()
-
-    # Default coupon
-    if not Coupon.query.first():
-        coupon = Coupon(
-            code='WELCOME10',
-            discount_type='percentage',
-            discount_value=10.0,
-            min_order_amount=500,
-            max_discount_amount=100,
-            expiry_date=datetime.utcnow() + timedelta(days=30),
-            is_active=True
-        )
-        db.session.add(coupon)
-        db.session.commit()
+        print("✅ Admin user created (login: 9999999999 / admin123)")
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -344,7 +299,109 @@ def estimate_delivery_date(pincode):
     delivery_date = datetime.utcnow() + timedelta(days=days)
     return delivery_date, days
 
-# ---------- ROUTES ----------
+# ---------- GOOGLE AUTH ROUTES ----------
+@app.route('/login/google')
+def google_login():
+    redirect_uri = url_for('google_callback', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+@app.route('/login/google/callback')
+def google_callback():
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        if not user_info:
+            user_info = google.get('https://www.googleapis.com/oauth2/v2/userinfo').json()
+        
+        email = user_info.get('email')
+        google_id = user_info.get('sub')
+        name = user_info.get('name', 'Google User')
+        picture = user_info.get('picture')
+        
+        # Check if user exists
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User.query.filter_by(google_id=google_id).first()
+        
+        if not user:
+            # Create new user
+            user = User(
+                name=name,
+                email=email,
+                google_id=google_id,
+                profile_pic=picture,
+                role='customer',
+                referral_code=f"GOOG_{uuid.uuid4().hex[:8].upper()}"
+            )
+            db.session.add(user)
+            db.session.commit()
+            flash('✅ Account created with Google!')
+        
+        login_user(user)
+        flash(f'✅ Welcome {user.name}!')
+        return redirect('/')
+    except Exception as e:
+        flash(f'❌ Google login failed: {str(e)}')
+        return redirect('/login')
+
+# ---------- REGULAR LOGIN/REGISTER ----------
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        phone = request.form.get('phone')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        if User.query.filter_by(phone=phone).first():
+            flash('Phone already registered!')
+            return redirect('/register')
+        if User.query.filter_by(email=email).first():
+            flash('Email already registered!')
+            return redirect('/register')
+        hashed = generate_password_hash(password)
+        user = User(
+            name=name,
+            phone=phone,
+            email=email,
+            password_hash=hashed,
+            role='customer',
+            referral_code=f"REF_{uuid.uuid4().hex[:8].upper()}"
+        )
+        db.session.add(user)
+        db.session.commit()
+        flash('Registration successful! Please login.')
+        return redirect('/login')
+    return render_template('register.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        phone = request.form.get('phone')
+        password = request.form.get('password')
+        user = User.query.filter_by(phone=phone).first()
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user)
+            if user.role == 'admin':
+                return redirect('/admin')
+            elif user.role == 'seller':
+                return redirect('/seller')
+            else:
+                return redirect('/')
+        else:
+            flash('Invalid phone or password!')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    session.pop('referral', None)
+    return redirect('/')
+
+# ---------- ROUTES (YOUR EXISTING CODE) ----------
+# ... (ALL YOUR EXISTING ROUTES - index, search, product, cart, checkout, profile, admin, etc.)
+# Copy and paste your existing routes here exactly as they were.
+
 @app.route('/')
 def index():
     ref = request.args.get('ref')
@@ -416,50 +473,6 @@ def check_pincode():
         })
     else:
         return jsonify({'success': False, 'message': 'Delivery not available'})
-
-# ---------- AUTH ----------
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        phone = request.form.get('phone')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        if User.query.filter_by(phone=phone).first():
-            flash('Phone already registered!')
-            return redirect('/register')
-        hashed = generate_password_hash(password)
-        user = User(name=name, phone=phone, email=email, password_hash=hashed, role='customer')
-        db.session.add(user)
-        db.session.commit()
-        flash('Registration successful! Please login.')
-        return redirect('/login')
-    return render_template('register.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        phone = request.form.get('phone')
-        password = request.form.get('password')
-        user = User.query.filter_by(phone=phone).first()
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user)
-            if user.role == 'admin':
-                return redirect('/admin')
-            elif user.role == 'seller':
-                return redirect('/seller')
-            else:
-                return redirect('/')
-        else:
-            flash('Invalid phone or password!')
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    session.pop('referral', None)
-    return redirect('/')
 
 # ---------- WISHLIST ----------
 @app.route('/wishlist')
@@ -575,7 +588,7 @@ def apply_coupon():
         'coupon_id': coupon.id
     })
 
-# ---------- CHECKOUT (UPDATED WITH SAFE CONVERSION) ----------
+# ---------- CHECKOUT ----------
 @app.route('/checkout', methods=['GET', 'POST'])
 @login_required
 def checkout():
@@ -648,12 +661,12 @@ def checkout():
             db.session.flush()
 
         coupon_id = request.form.get('coupon_id')
-        # ----- SAFE CONVERSION -----
+        # Safely convert discount and net
         discount_str = request.form.get('discount', '0').strip()
         discount = float(discount_str) if discount_str else 0.0
         net_str = request.form.get('net', str(total)).strip()
         net = float(net_str) if net_str else total
-        # --------------------------
+
         order_num = generate_order_number()
 
         try:
@@ -951,23 +964,6 @@ def admin_delete_product(id):
     db.session.commit()
     return redirect('/admin?tab=products')
 
-@app.route('/get-location/<pincode>')
-def get_location(pincode):
-    try:
-        import requests
-        url = f"https://api.postalpincode.in/pincode/{pincode}"
-        resp = requests.get(url, timeout=5)
-        data = resp.json()
-        if data and data[0]['Status'] == 'Success':
-            post_office = data[0]['PostOffice'][0]
-            city = post_office.get('District', '')
-            state = post_office.get('State', '')
-            return jsonify({'success': True, 'city': city, 'state': state})
-        else:
-            return jsonify({'success': False, 'message': 'Pincode not found'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
-
 @app.route('/admin/update-order/<int:id>/<status>')
 @login_required
 def admin_update_order(id, status):
@@ -1181,7 +1177,6 @@ def download_template():
         'yes', 'no', 'yes', 'no', 'yes', 'yes'
     ]
     ws.append(sample)
-    # Add comment to image_urls cell for instruction
     from openpyxl.comments import Comment
     cell = ws['V2']  # column V is image_urls (index 20)
     cell.comment = Comment('Enter comma-separated image URLs. The system will download and save them automatically.', 'Admin')
@@ -1296,4 +1291,4 @@ def internal_error(e):
 
 # ---------- RUN ----------
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)  # debug=False for production
